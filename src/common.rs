@@ -2399,6 +2399,20 @@ fn apply_custom_client_config(data: &[u8]) {
         }
     }
 
+    // Applied on every startup by design: this section is the deployer's forced
+    // factory default for new peers; end users change per-session or via the UI
+    // default editor instead of these keys.
+    if let Some(user_default) = data.remove("user-default-settings") {
+        if let Some(settings) = user_default.as_object() {
+            for (k, v) in settings {
+                let Some(v) = v.as_str() else {
+                    continue;
+                };
+                hbb_common::config::UserDefaultConfig::load().set(k.to_string(), v.to_owned());
+            }
+        }
+    }
+
     let mut map_display_settings = HashMap::new();
     for s in keys::KEYS_DISPLAY_SETTINGS {
         map_display_settings.insert(s.replace("_", "-"), s);

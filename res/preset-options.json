@@ -1,9 +1,15 @@
 {
   "default-settings": {
+    "direct-server": "Y",
     "custom-rendezvous-server": "",
     "relay-server": "",
     "api-server": "",
     "key": ""
+  },
+  "user-default-settings": {
+    "image-quality": "custom",
+    "custom-image-quality": "580",
+    "custom-fps": "60"
   },
   "override-settings": {}
 }
