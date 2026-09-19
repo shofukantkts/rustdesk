@@ -364,7 +364,7 @@ impl<T: InvokeUiSession> Remote<T> {
                             fps_instant = Instant::now();
                             let mut speed = self.data_count.swap(0, Ordering::Relaxed);
                             speed = speed * 1000 / elapsed as usize;
-                            let speed = format!("{:.2}kB/s", speed as f32 / 1024 as f32);
+                            let speed = format!("{:.2}Mbps", speed as f32 * 8.0 / 1_000_000.0);
 
                             let fps = self.video_threads.iter().map(|(k, v)| {
                                 // Correcting the inaccuracy of status_timer

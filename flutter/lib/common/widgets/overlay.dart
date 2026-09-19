@@ -581,6 +581,12 @@ class QualityMonitor extends StatelessWidget {
     );
   }
 
+  String? _targetBitrateText(String? kb) {
+    if (kb == null) return null;
+    final v = int.tryParse(kb);
+    return v == null ? kb : '${(v / 1000).toStringAsFixed(1)}Mbps';
+  }
+
   @override
   Widget build(BuildContext context) => ChangeNotifierProvider.value(
       value: qualityMonitorModel,
@@ -602,7 +608,8 @@ class QualityMonitor extends StatelessWidget {
                           "${qualityMonitorModel.data.delay == null ? '-' : (qualityMonitorModel.data.fps ?? "").replaceAll(' ', '').replaceAll('0', '').isEmpty ? 0 : qualityMonitorModel.data.delay}ms",
                           rightColor: Colors.green),
                       _row("Target Bitrate",
-                          "${qualityMonitorModel.data.targetBitrate ?? '-'}kb"),
+                          _targetBitrateText(qualityMonitorModel.data.targetBitrate) ??
+                              '-'),
                       _row(
                           "Codec", qualityMonitorModel.data.codecFormat ?? '-'),
                       _row("Chroma", qualityMonitorModel.data.chroma ?? '-'),
