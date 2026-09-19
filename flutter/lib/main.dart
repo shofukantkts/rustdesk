@@ -311,7 +311,6 @@ showCmWindow({bool isStartup = false}) async {
     bind.mainHideDock();
     await Future.wait([
       windowManager.show(),
-      windowManager.focus(),
       windowManager.setOpacity(1)
     ]);
     // ensure initial window size to be changed
@@ -321,11 +320,12 @@ showCmWindow({bool isStartup = false}) async {
   } else if (_isCmReadyToShow) {
     if (await windowManager.getOpacity() != 1) {
       await windowManager.setOpacity(1);
-      await windowManager.focus();
       await windowManager.minimize(); //needed
       await windowManager.setSizeAlignment(
           kConnectionManagerWindowSizeClosedChat, Alignment.topRight);
-      windowOnTop(null);
+      // float at the screen edge without stealing keyboard focus
+      await windowManager.restore();
+      await windowManager.show();
     }
   }
 }
