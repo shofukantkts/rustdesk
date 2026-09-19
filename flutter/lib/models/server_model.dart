@@ -32,6 +32,10 @@ class ServerModel with ChangeNotifier {
   bool _clipboardOk = false;
   bool _showElevation = false;
   bool hideCm = false;
+  // When hide_cm is on, the CM window still floats up for connections
+  // authenticated with the temporary (random) password.
+  bool hasTemporaryPasswordClient() =>
+      _clients.any((c) => c.authType == 2); // 2 = temporary password
   int _connectStatus = 0; // Rendezvous Server status
   String _verificationMethod = "";
   String _temporaryPasswordLength = "";
@@ -170,7 +174,7 @@ class ServerModel with ChangeNotifier {
             }
           } else {
             _zeroClientLengthCounter = 0;
-            if (!hideCm) showCmWindow();
+            if (!hideCm || hasTemporaryPasswordClient()) showCmWindow();
           }
         }
       }
@@ -512,7 +516,7 @@ class ServerModel with ChangeNotifier {
     if (desktopType == DesktopType.cm) {
       if (_clients.isEmpty) {
         hideCmWindow();
-      } else if (!hideCm) {
+      } else if (!hideCm || hasTemporaryPasswordClient()) {
         showCmWindow();
       }
     }
@@ -556,7 +560,7 @@ class ServerModel with ChangeNotifier {
         _clients.removeAt(index_disconnected);
         tabController.remove(index_disconnected);
       }
-      if (desktopType == DesktopType.cm && !hideCm) {
+      if (desktopType == DesktopType.cm && (!hideCm || hasTemporaryPasswordClient())) {
         showCmWindow();
       }
       scrollToBottom();
@@ -816,6 +820,8 @@ class Client {
   bool privacyMode = false;
   bool disconnected = false;
   bool fromSwitch = false;
+  // ConnAuditPrimaryAuth: 2 = temporary password, 3 = permanent password.
+  int authType = 0;
   bool inVoiceCall = false;
   bool incomingVoiceCall = false;
 
@@ -847,6 +853,7 @@ class Client {
     fromSwitch = json['from_switch'];
     inVoiceCall = json['in_voice_call'];
     incomingVoiceCall = json['incoming_voice_call'];
+    authType = json['auth_type'] ?? 0;
   }
 
   Map<String, dynamic> toJson() {

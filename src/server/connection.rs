@@ -2342,6 +2342,7 @@ impl Connection {
             block_input: self.block_input,
             privacy_mode: self.privacy_mode,
             from_switch: self.from_switch,
+            auth_type: self.conn_audit_primary_auth.as_i64(),
         });
     }
 

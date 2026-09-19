@@ -147,6 +147,8 @@ pub struct Client {
     pub block_input: bool,
     pub privacy_mode: bool,
     pub from_switch: bool,
+    // ConnAuditPrimaryAuth as i64: 2 = temporary password, 3 = permanent password.
+    pub auth_type: i64,
     pub in_voice_call: bool,
     pub incoming_voice_call: bool,
     #[serde(skip)]
@@ -235,6 +237,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         block_input: bool,
         privacy_mode: bool,
         from_switch: bool,
+        auth_type: i64,
         #[cfg(not(any(target_os = "ios")))] tx: mpsc::UnboundedSender<Data>,
     ) {
         let client = Client {
@@ -257,6 +260,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             block_input,
             privacy_mode,
             from_switch,
+            auth_type,
             #[cfg(not(any(target_os = "ios")))]
             tx,
             in_voice_call: false,
@@ -554,9 +558,9 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                         }
                         Ok(Some(data)) => {
                             match data {
-                                Data::Login{id, is_file_transfer, is_view_camera, is_terminal, port_forward, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, file_transfer_enabled: _file_transfer_enabled, restart, recording, block_input, privacy_mode, from_switch} => {
+                                Data::Login{id, is_file_transfer, is_view_camera, is_terminal, port_forward, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, file_transfer_enabled: _file_transfer_enabled, restart, recording, block_input, privacy_mode, from_switch, auth_type, ..} => {
                                     log::debug!("conn_id: {}", id);
-                                    self.cm.add_connection(id, is_file_transfer, is_view_camera, is_terminal, port_forward, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, restart, recording, block_input, privacy_mode, from_switch, self.tx.clone());
+                                    self.cm.add_connection(id, is_file_transfer, is_view_camera, is_terminal, port_forward, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, restart, recording, block_input, privacy_mode, from_switch, auth_type, self.tx.clone());
                                     self.conn_id = id;
                                     #[cfg(target_os = "windows")]
                                     {
@@ -908,6 +912,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                 block_input,
                 privacy_mode,
                 from_switch,
+                auth_type,
                 ..
             }) => {
                 current_id = id;
@@ -930,6 +935,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                     block_input,
                     privacy_mode,
                     from_switch,
+                    auth_type,
                     tx.clone(),
                 );
             }

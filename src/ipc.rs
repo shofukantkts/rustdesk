@@ -341,6 +341,7 @@ pub enum Data {
         block_input: bool,
         privacy_mode: bool,
         from_switch: bool,
+        auth_type: i64,
     },
     ChatMessage {
         text: String,
