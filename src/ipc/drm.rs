@@ -976,9 +976,9 @@ fn drm_capture_worker(
 ) {
     use std::sync::atomic::Ordering;
     use std::time::Duration;
-    const FRAME_INTERVAL: Duration = Duration::from_millis(33);
+    const FRAME_INTERVAL: Duration = Duration::from_millis(16);
     // Bound continuous no-frame (WouldBlock) time so a wedged device ends the stream (~5 s).
-    const MAX_STALLED: u32 = 150;
+    const MAX_STALLED: u32 = 300;
 
     let t_conn = std::time::Instant::now();
 
