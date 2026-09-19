@@ -1,0 +1,20 @@
+# RustDesk 控制端预配置（绿色版）
+# 本文件由 start-rustdesk.bat 在首次运行时拷贝到
+#   %APPDATA%\RustDesk\config\RustDesk2.toml
+# 之后界面里的修改都会写到那边，本文件不会再被覆盖。
+# 想重新下发配置：改本文件后，删除机器上的
+#   %APPDATA%\RustDesk\config\RustDesk2.toml
+# 再跑一次 start-rustdesk.bat 即可。
+
+[options]
+# ID 服务器（hbbs），例如 'hbbs.example.com:21116'，留空则走官方公共服务器
+custom-rendezvous-server = ''
+# 中继服务器（hbbr），例如 'hbbr.example.com:21117'
+relay-server = ''
+# API 服务器（可选，配合 Web 控制台/地址簿才需要）
+api-server = ''
+# 服务器公钥（hbbs 启动时打印的 Key 字符串）
+key = ''
+# 其他常用项（可自行增删）
+theme = 'system'
+codec-preference = 'auto'

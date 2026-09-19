@@ -1,0 +1,116 @@
+# Windows x64 viewer build, dispatched manually from the Actions tab only.
+# The shared flutter-build.yml builds every platform and burns private minutes;
+# this one produces just the Windows portable exe + green folder.
+name: Windows viewer build
+
+on:
+  workflow_dispatch:
+
+env:
+  # keep in sync with Cargo.toml version
+  VERSION: "1.5.0"
+
+jobs:
+  windows-x64:
+    name: portable exe + green folder
+    runs-on: windows-2022
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f4d5 # v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          prefix-key: windows-viewer
+
+      - name: Install flutter 3.24.5
+        uses: subosito/flutter-action@2783a3f08e1baf891508463f8c6653c258246225 # v2.12.0
+        with:
+          channel: "stable"
+          flutter-version: "3.24.5"
+          architecture: x64
+          cache: true
+
+      - name: Patch flutter dropdown filter
+        shell: bash
+        run: |
+          cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff $(dirname $(dirname $(which flutter)))
+          cd $(dirname $(dirname $(which flutter)))
+          git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2 # v11
+        with:
+          vcpkgDirectory: C:\vcpkg
+          vcpkgGitCommitId: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
+          doNotCache: false
+
+      - name: Install vcpkg dependencies
+        env:
+          VCPKG_DEFAULT_HOST_TRIPLET: x64-windows-static
+        shell: bash
+        run: |
+          if ! $VCPKG_ROOT/vcpkg install --triplet x64-windows-static \
+            --x-install-root="$VCPKG_ROOT/installed"; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do
+              echo "$_1:"
+              echo "======"
+              cat "$_1"
+              echo "======"
+              echo ""
+            done
+            exit 1
+          fi
+
+      - name: Build rustdesk (cargo + flutter, skip portable pack)
+        run: python3 .\build.py --portable --flutter --skip-portable-pack --hwcodec --vram
+
+      - name: Bundle portable folder
+        shell: pwsh
+        run: |
+          mv ./flutter/build/windows/x64/runner/Release ./rustdesk
+          Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
+          Expand-Archive usbmmidd_v2.zip -DestinationPath .
+          Remove-Item -Path .\usbmmidd_v2\Win32 -Recurse
+          Remove-Item -Path .\usbmmidd_v2\deviceinstaller64.exe, .\usbmmidd_v2\deviceinstaller.exe, .\usbmmidd_v2\usbmmidd.bat
+          mv -Force .\usbmmidd_v2 ./rustdesk
+          try {
+            Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/rustdesk_printer_driver_v4-1.4.zip -OutFile rustdesk_printer_driver_v4-1.4.zip
+            Expand-Archive rustdesk_printer_driver_v4-1.4.zip -DestinationPath .
+            mkdir ./rustdesk/drivers
+            mv -Force .\rustdesk_printer_driver_v4-1.4 ./rustdesk/drivers/RustDeskPrinterDriver
+          } catch {
+            Write-Host "printer driver download failed, skipped"
+          }
+          Copy-Item res\windows-portable\RustDesk2.toml .\rustdesk\ -Force
+          Copy-Item res\windows-portable\start-rustdesk.bat .\rustdesk\ -Force
+
+      - name: Build single-file portable exe
+        shell: bash
+        run: |
+          runner_res=$(find . -name "Runner.res" | head -1)
+          if [ -n "$runner_res" ]; then cp "$runner_res" ./libs/portable/Runner.res; fi
+          sed -i '/dpiAware/d' res/manifest.xml
+          pushd ./libs/portable
+          pip3 install -r requirements.txt
+          python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe
+          popd
+          mkdir -p ./output
+          mv ./target/release/rustdesk-portable-packer.exe ./output/rustdesk-${{ env.VERSION }}-x86_64.exe
+
+      - name: Zip green folder
+        shell: pwsh
+        run: Compress-Archive -Path .\rustdesk\* -DestinationPath .\output\rustdesk-green-folder-${{ env.VERSION }}-x86_64.zip
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: rustdesk-windows-x64
+          path: ./output/*
