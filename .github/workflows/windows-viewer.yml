@@ -41,9 +41,11 @@ jobs:
       - name: Patch flutter dropdown filter
         shell: bash
         run: |
-          cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff $(dirname $(dirname $(which flutter)))
-          cd $(dirname $(dirname $(which flutter)))
-          git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
+          SDK=$(dirname $(dirname $(which flutter)))
+          cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff "$SDK/"
+          # the action cache may restore an already-patched SDK; reset then apply fresh
+          git -C "$SDK" checkout -- packages/flutter/lib/src/material/dropdown_menu.dart
+          cd "$SDK" && git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2 # v11
