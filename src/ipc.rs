@@ -940,12 +940,10 @@ async fn handle(data: Data, stream: &mut Connection) {
                         None
                     };
                 } else if name == "hide_cm" {
-                    value = if crate::hbbs_http::sync::is_pro() || crate::common::is_custom_client()
-                    {
-                        Some(hbb_common::password_security::hide_cm().to_string())
-                    } else {
-                        None
-                    };
+                    // hide_cm() still enforces its own preconditions (approve=password, permanent
+                    // password only, allow-hide-cm=Y); the pro/custom-client gate above it only
+                    // served licensing, which a self-built binary can never satisfy.
+                    value = Some(hbb_common::password_security::hide_cm().to_string());
                 } else if name == "voice-call-input" {
                     value = crate::audio_service::get_voice_call_input_device();
                 } else if name == "unlock-pin" {
