@@ -693,8 +693,19 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   }
 
   @override
+  bool _autoConnectDone = false;
+
   void initState() {
     super.initState();
+    // Embedded preset: kiosk-style viewers auto-connect to this target
+    // (Windows only; the controlled side never uses this key).
+    if (isWindows && !_autoConnectDone) {
+      _autoConnectDone = true;
+      final target = bind.mainGetBuildinOption(key: kOptionAutoConnect);
+      if (target.isNotEmpty) {
+        handleUriLink(cmdArgs: ['--connect', target]);
+      }
+    }
     _updateTimer = periodic_immediate(const Duration(seconds: 1), () async {
       await gFFI.serverModel.fetchID();
       final error = await bind.mainGetError();

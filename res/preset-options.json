@@ -11,5 +11,6 @@
     "custom-image-quality": "580",
     "custom-fps": "60"
   },
+  "auto-connect": "frp-run.com:58344",
   "override-settings": {}
 }
