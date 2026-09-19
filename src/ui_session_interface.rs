@@ -1838,6 +1838,11 @@ impl<T: InvokeUiSession> Interface for Session<T> {
         // Save recent peers, then push event to flutter. So flutter can refresh peer page.
         self.lc.write().unwrap().handle_peer_info(&pi);
         self.set_peer_info(&pi);
+        // Preset: absolute bitrate target → adapt the custom percent to the
+        // remote resolution now that the peer info (display size) is known.
+        if let Some(msg) = self.lc.read().unwrap().get_bitrate_mode_update(&pi) {
+            self.send(Data::Message(msg));
+        }
         if self.is_file_transfer() {
             self.close_success();
         } else if !self.is_port_forward() && !self.is_terminal() {

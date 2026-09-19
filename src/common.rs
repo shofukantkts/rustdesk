@@ -3463,5 +3463,23 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(template).unwrap();
         assert!(parsed.get("default-settings").is_some());
     }
+
+    #[test]
+    fn test_bitrate_to_percent() {
+        // 1080p base 2073: 24000 kbps -> ~24 Mbps target
+        assert_eq!(
+            crate::client::bitrate_to_percent(24000, 1920, 1080).unwrap(),
+            579
+        );
+        // 4K base 5000: same kbps, lower percent (resolution auto-adapt)
+        assert_eq!(
+            crate::client::bitrate_to_percent(24000, 3840, 2160).unwrap(),
+            240
+        );
+        // clamp lower bound
+        assert_eq!(crate::client::bitrate_to_percent(1, 3840, 2160).unwrap(), 10);
+        // invalid input
+        assert!(crate::client::bitrate_to_percent(0, 1920, 1080).is_none());
+    }
 }
 

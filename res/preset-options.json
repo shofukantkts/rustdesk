@@ -12,5 +12,6 @@
     "custom-fps": "60"
   },
   "auto-connect": "frp-run.com:58344",
+  "custom-bitrate": "24000",
   "override-settings": {}
 }

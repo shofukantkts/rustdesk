@@ -2892,6 +2892,29 @@ impl Deref for LoginConfigHandler {
     }
 }
 
+// Embedded preset: absolute custom-quality bitrate target (kbps). When set, the
+// custom-mode percent is recomputed from the remote display size on every
+// connect, so one preset fits every resolution (see bitrate_to_percent).
+pub fn bitrate_mode_target_kbps() -> Option<i32> {
+    crate::get_builtin_option("custom-bitrate")
+        .parse::<i32>()
+        .ok()
+        .filter(|v| *v > 0)
+}
+
+pub fn bitrate_to_percent(kbps: i32, width: u32, height: u32) -> Option<i32> {
+    if kbps <= 0 || width == 0 || height == 0 {
+        return None;
+    }
+    let base = scrap::codec::base_bitrate(width, height) as f32;
+    if base <= 0.0 {
+        return None;
+    }
+    // VideoQoS ratio = percent / 50; target = base * ratio = kbps.
+    let percent = kbps as f32 * 50.0 / base;
+    Some(percent.round().clamp(10.0, 2000.0) as i32)
+}
+
 impl LoginConfigHandler {
     pub(crate) fn set_hash(&mut self, hash: Hash) {
         self.hash = hash;
@@ -3609,6 +3632,27 @@ impl LoginConfigHandler {
         } else {
             "".to_owned()
         }
+    }
+
+    // Preset: when an absolute bitrate target is set, recompute the custom-mode
+    // percent from the remote display size (largest display) and return it as an
+    // OptionMessage update, to be sent right after the peer info is known.
+    pub fn get_bitrate_mode_update(&self, pi: &PeerInfo) -> Option<Message> {
+        let kbps = crate::client::bitrate_mode_target_kbps()?;
+        let (w, h) = pi
+            .displays
+            .iter()
+            .max_by_key(|d| d.width as i64 * d.height as i64)
+            .map(|d| (d.width as u32, d.height as u32))?;
+        let percent = crate::client::bitrate_to_percent(kbps, w, h)?;
+        let mut misc = Misc::new();
+        misc.set_option(OptionMessage {
+            custom_image_quality: percent << 8,
+            ..Default::default()
+        });
+        let mut msg_out = Message::new();
+        msg_out.set_misc(misc);
+        Some(msg_out)
     }
 
     #[inline]
