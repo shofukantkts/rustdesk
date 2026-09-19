@@ -1,0 +1,9 @@
+{
+  "default-settings": {
+    "custom-rendezvous-server": "",
+    "relay-server": "",
+    "api-server": "",
+    "key": ""
+  },
+  "override-settings": {}
+}

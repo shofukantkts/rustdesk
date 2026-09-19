@@ -2258,6 +2258,7 @@ pub fn rustdesk_interval(i: Interval) -> ThrottledInterval {
 }
 
 pub fn load_custom_client() {
+    load_embedded_preset_options();
     #[cfg(debug_assertions)]
     if let Ok(data) = std::fs::read_to_string("./custom.txt") {
         read_custom_client(data.trim());
@@ -2355,6 +2356,18 @@ pub fn get_dst_align_rgba() -> usize {
     1
 }
 
+// Compile-time preset options for self-built binaries: the same semantics as the
+// official custom-client config, without the licensing signature. Edit
+// res/preset-options.json and rebuild; "default-settings" fall back when the
+// local option is unset, "override-settings" force the value on every machine.
+pub fn load_embedded_preset_options() {
+    const PRESETS: &str = include_str!("../res/preset-options.json");
+    if PRESETS.trim().is_empty() {
+        return;
+    }
+    apply_custom_client_config(PRESETS.as_bytes());
+}
+
 pub fn read_custom_client(config: &str) {
     let Ok(data) = decode64(config) else {
         log::error!("Failed to decode custom client config");
@@ -2369,6 +2382,10 @@ pub fn read_custom_client(config: &str) {
         log::error!("Failed to dec custom client config");
         return;
     };
+    apply_custom_client_config(&data);
+}
+
+fn apply_custom_client_config(data: &[u8]) {
     let Ok(mut data) =
         serde_json::from_slice::<std::collections::HashMap<String, serde_json::Value>>(&data)
     else {
@@ -3416,4 +3433,21 @@ mod tests {
         // non-WebRTC handshakes.
         assert_eq!(decode_id_pk(&signed, &pk).unwrap(), (id, their_pk));
     }
+
+    #[test]
+    fn test_apply_custom_client_config_preset() {
+        apply_custom_client_config(
+            br#"{"override-settings": {"test-preset-override-key": "v1"}, "default-settings": {"test-preset-default-key": "v2"}}"#,
+        );
+        assert_eq!(config::Config::get_option("test-preset-override-key"), "v1");
+        assert_eq!(config::Config::get_option("test-preset-default-key"), "v2");
+    }
+
+    #[test]
+    fn test_embedded_preset_options_template_valid() {
+        let template = include_str!("../res/preset-options.json");
+        let parsed: serde_json::Value = serde_json::from_str(template).unwrap();
+        assert!(parsed.get("default-settings").is_some());
+    }
 }
+
