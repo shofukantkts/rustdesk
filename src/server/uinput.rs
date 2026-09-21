@@ -865,25 +865,69 @@ pub mod service {
                                                 (resolution.0.clone(), resolution.1.clone())
                                             };
                                             log::info!(
-                                                "Refresh uinput mouce with rng_x: ({}, {}), rng_y: ({}, {})",
+                                                "Refresh uinput mouce range: ({}, {}), ({}, {})",
                                                 rng_x.0,
                                                 rng_x.1,
                                                 rng_y.0,
                                                 rng_y.1
                                             );
-                                            match mouce::UInputMouseManager::new(rng_x, rng_y) {
-                                                Ok(m) => {
-                                                    mouse = m;
-                                                    // Ack: device adopted the new range.
-                                                    allow_err!(stream.send(&Data::Empty).await);
-                                                }
-                                                Err(e) => {
-                                                    // Keep the current device; withhold the ack
-                                                    // so the client times out and retries.
-                                                    log::error!(
-                                                        "Failed to recreate uinput mouse, keeping current: {}",
-                                                        e
+                                            // Prefer reprogramming the ABS range in place:
+                                            // recreating the device makes the compositor
+                                            // re-enumerate it as a fresh absolute pointer and
+                                            // snap the cursor to the new device's initial ABS
+                                            // value, even with no remote session. The kernel
+                                            // refuses both UI_ABS_SETUP and EVIOCSABS after
+                                            // UI_DEV_CREATE, so on failure we fall back to a
+                                            // THROTTLED recreate: compositor layout jitter
+                                            // must not turn into a stream of cursor jumps.
+                                            if mouse.set_resolution(rng_x, rng_y).is_ok() {
+                                                // Ack: device adopted the new range.
+                                                allow_err!(stream.send(&Data::Empty).await);
+                                            } else {
+                                                // Take the throttle decision with the lock held
+                                                // inside a short block so the MutexGuard never
+                                                // crosses an await (the future must stay Send).
+                                                let throttled = {
+                                                    let now = std::time::Instant::now();
+                                                    let mut last = mouce::LAST_MOUSE_RECREATE.lock().unwrap();
+                                                    match *last {
+                                                        Some(prev)
+                                                            if now.duration_since(prev)
+                                                                < mouce::MOUSE_RECREATE_THROTTLE =>
+                                                        {
+                                                            true
+                                                        }
+                                                        _ => {
+                                                            *last = Some(now);
+                                                            false
+                                                        }
+                                                    }
+                                                };
+                                                if throttled {
+                                                    log::info!(
+                                                        "uinput mouse recreate throttled, keeping current device"
                                                     );
+                                                    // Ack anyway so the client stops retrying.
+                                                    allow_err!(stream.send(&Data::Empty).await);
+                                                    continue;
+                                                }
+                                                log::error!(
+                                                    "Failed to update uinput mouse resolution in place, recreating device (throttled)"
+                                                );
+                                                match mouce::UInputMouseManager::new(rng_x, rng_y) {
+                                                    Ok(m) => {
+                                                        mouse = m;
+                                                        // Ack: device adopted the new range.
+                                                        allow_err!(stream.send(&Data::Empty).await);
+                                                    }
+                                                    Err(e) => {
+                                                        // Keep the current device; withhold the ack
+                                                        // so the client times out and retries.
+                                                        log::error!(
+                                                            "Failed to recreate uinput mouse, keeping current: {}",
+                                                            e
+                                                        );
+                                                    }
                                                 }
                                             }
                                         } else {
@@ -1034,11 +1078,24 @@ mod mouce {
             raw::{c_char, c_int, c_long, c_uint, c_ulong, c_ushort},
             unix::{fs::OpenOptionsExt, io::AsRawFd},
         },
+        sync::Mutex,
         thread,
-        time::Duration,
+        time::{Duration, Instant},
     };
 
     pub const O_NONBLOCK: c_int = 2048;
+
+    /// Throttle window for uinput mouse device recreation. The kernel refuses to
+    /// reprogram the ABS range of an already-created uinput device (both
+    /// `UI_ABS_SETUP` and `EVIOCSABS` return EINVAL after `UI_DEV_CREATE`), so a
+    /// layout refresh can only be applied by destroying and recreating the device
+    /// -- which makes the compositor re-enumerate it as a fresh absolute pointer
+    /// and snap the cursor (the "jumping cursor" bug, visible even with no remote
+    /// session). Recreating at most once per window keeps compositor layout
+    /// jitter from translating into a stream of cursor jumps.
+    pub const MOUSE_RECREATE_THROTTLE: Duration = Duration::from_secs(10);
+
+    pub static LAST_MOUSE_RECREATE: Mutex<Option<Instant>> = Mutex::new(None);
 
     /// ioctl and uinput definitions
     const UI_ABS_SETUP: c_ulong = 1075598596;
@@ -1309,6 +1366,42 @@ mod mouce {
                 MouseButton::Back => BTN_BACK,
                 MouseButton::Task => BTN_TASK,
             }
+        }
+
+        /// Reprogram the ABS range in place instead of destroying and recreating
+        /// the device. Recreating makes the compositor re-enumerate the device as
+        /// a fresh absolute pointer and snap the cursor to its initial ABS value
+        /// (screen corner/center), which is the "jumping cursor" symptom seen
+        /// even with no remote session active. Keeping the same device node
+        /// means the pointer never moves.
+        ///
+        /// Requires kernel >= 4.2 (`UI_ABS_SETUP`). Returns `Err` on failure so
+        /// callers can fall back to the old recreate path.
+        pub fn set_resolution(&mut self, rng_x: (i32, i32), rng_y: (i32, i32)) -> Result<()> {
+            let fd = self.uinput_file.as_raw_fd();
+            for (code, rng) in [(ABS_X, rng_x), (ABS_Y, rng_y)] {
+                let ret = unsafe {
+                    ioctl(
+                        fd,
+                        UI_ABS_SETUP,
+                        &UinputAbsSetup {
+                            code: code as _,
+                            absinfo: InputAbsinfo {
+                                value: 0,
+                                minimum: rng.0,
+                                maximum: rng.1,
+                                fuzz: 0,
+                                flat: 0,
+                                resolution: 0,
+                            },
+                        },
+                    )
+                };
+                if ret != 0 {
+                    return Err(std::io::Error::last_os_error().into());
+                }
+            }
+            Ok(())
         }
 
         pub fn move_to(&self, x: usize, y: usize) -> Result<()> {

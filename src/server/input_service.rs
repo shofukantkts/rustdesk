@@ -2376,6 +2376,18 @@ async fn send_sas() -> ResultType<()> {
 #[inline]
 #[cfg(target_os = "linux")]
 pub fn wayland_use_uinput() -> bool {
+    // Escape hatch: `RUSTDESK_DISABLE_UINPUT=1` (or true/yes/on) stops the
+    // server from creating the absolute-pointer uinput device that some
+    // compositors re-enumerate on a range refresh, snapping the local cursor
+    // even with no remote session active. Disabling it disables server-side
+    // mouse injection on Wayland (viewer-side rdp input is unaffected), but
+    // keeps the local cursor stable.
+    if let Some(v) = std::env::var_os("RUSTDESK_DISABLE_UINPUT") {
+        let v = v.to_string_lossy().to_ascii_lowercase();
+        if v == "1" || v == "true" || v == "yes" || v == "on" {
+            return false;
+        }
+    }
     !crate::platform::is_x11() && crate::is_server()
 }
 
