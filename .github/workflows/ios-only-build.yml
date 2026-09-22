@@ -105,10 +105,12 @@ jobs:
         shell: bash
         run: |
           pushd flutter
-          flutter build ipa --release --no-codesign
-          echo "=== ipa output dir ==="
-          ls -la build/ios/ipa/ || true
-          find . -name "*.ipa" -not -path "./.git/*" 2>/dev/null || true
+          flutter build ios --release --no-codesign
+          mkdir -p build/ios/ipa/Payload
+          cp -r build/ios/iphoneos/Runner.app build/ios/ipa/Payload/
+          cd build/ios/ipa && zip -qry Runner.ipa Payload
+          ls -la
+          popd
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -722,9 +722,14 @@ jobs:
         shell: bash
         run: |
           pushd flutter
-          # flutter build ipa --release --obfuscate --split-debug-info=./split-debug-info --no-codesign
-          # for easy debugging
-          flutter build ipa --release --no-codesign
+          # exportOptions.plist in this repo targets the App Store (team HZF9JMC8YN),
+          # so "flutter build ipa --no-codesign" only makes an xcarchive and never
+          # exports an ipa. Build the .app and package the ipa manually instead.
+          flutter build ios --release --no-codesign
+          mkdir -p build/ios/ipa/Payload
+          cp -r build/ios/iphoneos/Runner.app build/ios/ipa/Payload/
+          cd build/ios/ipa && zip -qry Runner.ipa Payload
+          popd
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
