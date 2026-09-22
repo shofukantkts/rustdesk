@@ -1,0 +1,14 @@
+name: iOS Build
+
+# Manual trigger only: builds the rustdesk iOS ipa on the free macOS runner
+# and uploads it as a workflow artifact. The build is unsigned
+# (flutter build ipa --release --no-codesign); install on a device with a
+# free Apple ID (re-sign every 7 days) or a paid developer account.
+on:
+  workflow_dispatch:
+
+jobs:
+  run-ci:
+    uses: ./.github/workflows/flutter-build.yml
+    with:
+      upload-artifact: true
