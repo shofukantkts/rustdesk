@@ -317,7 +317,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
                       },
                     )
                   ] +
-                  (isWeb
+                  (isWeb || isIOS
                       ? []
                       : <Widget>[
                           futureBuilder(

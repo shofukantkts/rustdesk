@@ -606,7 +606,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                     () => _showGestureHelp = !_showGestureHelp),
                               ),
                             ]) +
-                  (isWeb
+                  (isWeb || isIOS
                       ? []
                       : <Widget>[
                           futureBuilder(
