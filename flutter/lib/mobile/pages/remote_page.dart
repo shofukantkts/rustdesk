@@ -8,6 +8,7 @@ import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/mobile/widgets/floating_mouse.dart';
 import 'package:flutter_hbb/mobile/widgets/floating_mouse_widgets.dart';
 import 'package:flutter_hbb/mobile/widgets/gesture_help.dart';
+import 'package:flutter_hbb/mobile/widgets/remote_keyboard_panel.dart';
 import 'package:flutter_hbb/models/chat_model.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:flutter_svg/svg.dart';
@@ -74,6 +75,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   final FocusNode _mobileFocusNode = FocusNode();
   final FocusNode _physicalFocusNode = FocusNode();
   var _showEdit = false; // use soft keyboard
+  bool _showKeyboardPanel = false;
+  RemoteKeyboardTab _keyboardTab = RemoteKeyboardTab.inputMethod;
 
   Worker? _waylandKeyboardGateWorker;
   bool _waylandKeyboardGateInitialized = false;
@@ -240,6 +243,12 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
   void onSoftKeyboardChanged(bool visible) {
     if (!visible) {
+      if (_showKeyboardPanel &&
+          _keyboardTab == RemoteKeyboardTab.inputMethod &&
+          _showEdit) {
+        _showKeyboardPanel = false;
+        _showEdit = false;
+      }
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
       // [pi.version.isNotEmpty] -> check ready or not, avoid login without soft-keyboard
       if (gFFI.chatModel.chatWindowOverlayEntry == null &&
@@ -415,6 +424,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   void _openKeyboardUnlocked() {
     inputModel.keyboardInputAllowed = true;
     gFFI.invokeMethod("enable_soft_keyboard", true);
+    _keyboardTab = RemoteKeyboardTab.inputMethod;
+    _showKeyboardPanel = true;
     // destroy first, so that our _value trick can work
     _value = initText;
     _textController.text = _value;
@@ -433,17 +444,57 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     });
   }
 
-  Widget _bottomWidget() => _showGestureHelp
-      ? getGestureHelp()
-      : (_showBar && gFFI.ffiModel.pi.displays.isNotEmpty
-          ? getBottomAppBar()
-          : Offstage());
+  void _selectKeyboardTab(RemoteKeyboardTab tab) {
+    if (tab == RemoteKeyboardTab.inputMethod) {
+      openKeyboard();
+      return;
+    }
+    _timer?.cancel();
+    _iosKeyboardWorkaroundTimer?.cancel();
+    setState(() {
+      _showKeyboardPanel = true;
+      _keyboardTab = tab;
+      _showEdit = false;
+    });
+    gFFI.invokeMethod("enable_soft_keyboard", false);
+    _mobileFocusNode.unfocus();
+    _physicalFocusNode.requestFocus();
+  }
+
+  void _closeKeyboardPanel() {
+    _timer?.cancel();
+    _iosKeyboardWorkaroundTimer?.cancel();
+    setState(() {
+      _showKeyboardPanel = false;
+      _showEdit = false;
+    });
+    gFFI.invokeMethod("enable_soft_keyboard", false);
+    _mobileFocusNode.unfocus();
+    _physicalFocusNode.requestFocus();
+  }
+
+  Widget _bottomWidget() {
+    if (_showKeyboardPanel) {
+      return RemoteKeyboardPanel(
+        tab: _keyboardTab,
+        inputModel: inputModel,
+        isMac: gFFI.ffiModel.pi.platform == kPeerPlatformMacOS,
+        onTabSelected: _selectKeyboardTab,
+        onClose: _closeKeyboardPanel,
+      );
+    }
+    if (_showGestureHelp) return getGestureHelp();
+    return _showBar && gFFI.ffiModel.pi.displays.isNotEmpty
+        ? getBottomAppBar()
+        : Offstage();
+  }
 
   @override
   Widget build(BuildContext context) {
     final keyboardIsVisible =
         keyboardVisibilityController.isVisible && _showEdit;
-    final showActionButton = !_showBar || keyboardIsVisible || _showGestureHelp;
+    final showActionButton = !_showKeyboardPanel &&
+        (!_showBar || keyboardIsVisible || _showGestureHelp);
 
     return WillPopScope(
       onWillPop: () async {
@@ -668,7 +719,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
             ),
             KeyHelpTools(
                 keyboardIsVisible: keyboardIsVisible,
-                showGestureHelp: _showGestureHelp),
+                showGestureHelp: _showGestureHelp,
+                keyboardPanelOpen: _showKeyboardPanel),
             SizedBox(
               width: 0,
               height: 0,
@@ -918,12 +970,15 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 class KeyHelpTools extends StatefulWidget {
   final bool keyboardIsVisible;
   final bool showGestureHelp;
+  final bool keyboardPanelOpen;
 
   /// need to show by external request, etc [keyboardIsVisible] or [changeTouchMode]
   bool get requestShow => keyboardIsVisible || showGestureHelp;
 
   KeyHelpTools(
-      {required this.keyboardIsVisible, required this.showGestureHelp});
+      {required this.keyboardIsVisible,
+      required this.showGestureHelp,
+      required this.keyboardPanelOpen});
 
   @override
   State<KeyHelpTools> createState() => _KeyHelpToolsState();
@@ -975,6 +1030,11 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.keyboardPanelOpen) {
+      gFFI.cursorModel
+          .keyHelpToolsVisibilityChanged(null, widget.keyboardIsVisible);
+      return Offstage();
+    }
     final hasModifierOn = inputModel.ctrl ||
         inputModel.alt ||
         inputModel.shift ||

@@ -5094,12 +5094,14 @@ lazy_static::lazy_static! {
         ("VK_8", Key::Chr('8' as _)),
         ("VK_9", Key::Chr('9' as _)),
         ("VK_COMMA", Key::Chr(',' as _)),
+        ("VK_PERIOD", Key::Chr('.' as _)),
         ("VK_SLASH", Key::Chr('/' as _)),
         ("VK_SEMICOLON", Key::Chr(';' as _)),
         ("VK_QUOTE", Key::Chr('\'' as _)),
         ("VK_LBRACKET", Key::Chr('[' as _)),
         ("VK_RBRACKET", Key::Chr(']' as _)),
         ("VK_BACKSLASH", Key::Chr('\\' as _)),
+        ("VK_BACKQUOTE", Key::Chr('`' as _)),
         ("VK_MINUS", Key::Chr('-' as _)),
         ("VK_PLUS", Key::Chr('=' as _)), // it is =, but sciter return VK_PLUS
         ("VK_DIVIDE", Key::ControlKey(ControlKey::Divide)), // numpad
