@@ -14,6 +14,9 @@
   "auto-connect": "frp-run.com:58344",
   "custom-bitrate": "24000",
   "override-settings": {
+    "image-quality": "custom",
+    "custom-image-quality": "580",
+    "custom-fps": "60",
     "codec-preference": "h264",
     "enable-hwcodec": "Y"
   }
