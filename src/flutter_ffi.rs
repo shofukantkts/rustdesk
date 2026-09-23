@@ -1200,9 +1200,8 @@ pub fn main_set_env(key: String, value: Option<String>) -> SyncReturn<()> {
     match value {
         Some(v) => {
             let is_valid_value = !v.contains('\0');
-            debug_assert!(is_valid_value, "Invalid environment variable value: {}", v);
             if !is_valid_value {
-                log::error!("Invalid environment variable value: {}", v);
+                log::error!("Invalid environment variable value: contains NUL byte");
                 return SyncReturn(());
             }
             std::env::set_var(key, v);
