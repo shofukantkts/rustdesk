@@ -16,6 +16,8 @@ jobs:
   update-fdroid-version-file:
     name: Publish RustDesk version file for F-Droid updater
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Generate RustDesk version file
         run: |
