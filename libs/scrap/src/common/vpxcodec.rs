@@ -3,10 +3,10 @@
 // https://github.com/rust-av/vpx-rs/blob/master/src/decoder.rs
 // https://github.com/chromium/chromium/blob/e7b24573bc2e06fed4749dd6b6abfce67f29052f/media/video/vpx_video_encoder.cc#L522
 
+use base::message_proto::{Chroma, EncodedVideoFrame, EncodedVideoFrames, VideoFrame};
 use hbb_common::anyhow::{anyhow, Context};
 use hbb_common::log;
 use hbb_common::ResultType;
-use base::message_proto::{Chroma, EncodedVideoFrame, EncodedVideoFrames, VideoFrame};
 
 use crate::codec::{base_bitrate, codec_thread_num, EncoderApi};
 use crate::{EncodeInput, EncodeYuvFormat, GoogleImage, Pixfmt, STRIDE_ALIGN};
@@ -15,7 +15,11 @@ use super::vpx::{vp8e_enc_control_id::*, vpx_codec_err_t::*, *};
 use crate::{generate_call_macro, generate_call_ptr_macro, Error, Result};
 use hbb_common::bytes::Bytes;
 use std::os::raw::{c_int, c_uint};
-use std::{ptr, slice};
+use std::{
+    marker::PhantomData,
+    ptr::{self, NonNull},
+    slice,
+};
 
 generate_call_macro!(call_vpx, false);
 generate_call_ptr_macro!(call_vpx_ptr);
@@ -520,29 +524,26 @@ pub struct DecodeFrames<'a> {
     iter: vpx_codec_iter_t,
 }
 
-impl<'a> Iterator for DecodeFrames<'a> {
-    type Item = Image;
-    fn next(&mut self) -> Option<Self::Item> {
+impl DecodeFrames<'_> {
+    pub fn next<'frame>(&'frame mut self) -> Option<Image<'frame>> {
         let img = unsafe { vpx_codec_get_frame(self.ctx, &mut self.iter) };
-        if img.is_null() {
-            return None;
-        } else {
-            return Some(Image(img));
-        }
+        NonNull::new(img).map(|ptr| Image {
+            ptr,
+            _borrow: PhantomData,
+        })
     }
 }
 
 // https://chromium.googlesource.com/webm/libvpx/+/bali/vpx/src/vpx_image.c
-pub struct Image(*mut vpx_image_t);
-impl Image {
-    #[inline]
-    pub fn new() -> Self {
-        Self(std::ptr::null_mut())
-    }
+pub struct Image<'frame> {
+    ptr: NonNull<vpx_image_t>,
+    _borrow: PhantomData<&'frame mut vpx_image_t>,
+}
 
+impl Image<'_> {
     #[inline]
     pub fn is_null(&self) -> bool {
-        self.0.is_null()
+        false
     }
 
     #[inline]
@@ -553,11 +554,15 @@ impl Image {
 
     #[inline]
     pub fn inner(&self) -> &vpx_image_t {
-        unsafe { &*self.0 }
+        // SAFETY: next() lends the decoder-owned image until the next mutable access
+        // to DecodeFrames, which prevents another get_frame/decode while this is borrowed.
+        unsafe { self.ptr.as_ref() }
     }
 }
 
-impl GoogleImage for Image {
+// SAFETY: the image descriptor and planes are owned by the decoder and remain valid for the
+// lending Image borrow; `DecodeFrames::next` prevents another get_frame/decode while it is live.
+unsafe impl GoogleImage for Image<'_> {
     #[inline]
     fn width(&self) -> usize {
         self.inner().d_w as _
@@ -582,14 +587,6 @@ impl GoogleImage for Image {
         match self.inner().fmt {
             vpx_img_fmt::VPX_IMG_FMT_I444 => Chroma::I444,
             _ => Chroma::I420,
-        }
-    }
-}
-
-impl Drop for Image {
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            unsafe { vpx_img_free(self.0) };
         }
     }
 }

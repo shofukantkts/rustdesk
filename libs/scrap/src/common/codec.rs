@@ -715,23 +715,26 @@ impl Decoder {
         rgb: &mut ImageRgb,
         chroma: &mut Option<Chroma>,
     ) -> ResultType<bool> {
-        let mut last_frame = vpxcodec::Image::new();
+        let mut last_frame_rgb = ImageRgb::new(rgb.fmt, rgb.align);
+        let mut last_frame_chroma = None;
         for vpx in vpxs.frames.iter() {
-            for frame in decoder.decode(&vpx.data)? {
-                drop(last_frame);
-                last_frame = frame;
+            let mut frames = decoder.decode(&vpx.data)?;
+            while let Some(frame) = frames.next() {
+                frame.to(&mut last_frame_rgb);
+                last_frame_chroma = Some(frame.chroma());
             }
         }
-        for frame in decoder.flush()? {
-            drop(last_frame);
-            last_frame = frame;
+        let mut frames = decoder.flush()?;
+        while let Some(frame) = frames.next() {
+            frame.to(&mut last_frame_rgb);
+            last_frame_chroma = Some(frame.chroma());
         }
-        if last_frame.is_null() {
-            Ok(false)
-        } else {
-            *chroma = Some(last_frame.chroma());
-            last_frame.to(rgb);
+        if let Some(frame_chroma) = last_frame_chroma {
+            *rgb = last_frame_rgb;
+            *chroma = Some(frame_chroma);
             Ok(true)
+        } else {
+            Ok(false)
         }
     }
 
@@ -742,23 +745,26 @@ impl Decoder {
         rgb: &mut ImageRgb,
         chroma: &mut Option<Chroma>,
     ) -> ResultType<bool> {
-        let mut last_frame = aom::Image::new();
+        let mut last_frame_rgb = ImageRgb::new(rgb.fmt, rgb.align);
+        let mut last_frame_chroma = None;
         for av1 in av1s.frames.iter() {
-            for frame in decoder.decode(&av1.data)? {
-                drop(last_frame);
-                last_frame = frame;
+            let mut frames = decoder.decode(&av1.data)?;
+            while let Some(frame) = frames.next() {
+                frame.to(&mut last_frame_rgb);
+                last_frame_chroma = Some(frame.chroma());
             }
         }
-        for frame in decoder.flush()? {
-            drop(last_frame);
-            last_frame = frame;
+        let mut frames = decoder.flush()?;
+        while let Some(frame) = frames.next() {
+            frame.to(&mut last_frame_rgb);
+            last_frame_chroma = Some(frame.chroma());
         }
-        if last_frame.is_null() {
-            Ok(false)
-        } else {
-            *chroma = Some(last_frame.chroma());
-            last_frame.to(rgb);
+        if let Some(frame_chroma) = last_frame_chroma {
+            *rgb = last_frame_rgb;
+            *chroma = Some(frame_chroma);
             Ok(true)
+        } else {
+            Ok(false)
         }
     }
 

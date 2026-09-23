@@ -424,7 +424,14 @@ macro_rules! generate_call_ptr_macro {
     };
 }
 
-pub trait GoogleImage {
+/// Image metadata and plane access used by the RGB conversion helpers.
+///
+/// # Safety
+/// Implementations must ensure that the plane pointers, strides, dimensions, and chroma they
+/// report remain mutually consistent and valid for every read performed by `to()` while `self`
+/// is borrowed. In particular, each selected plane must cover the rows and columns described by
+/// its stride and the reported dimensions.
+pub unsafe trait GoogleImage {
     fn width(&self) -> usize;
     fn height(&self) -> usize;
     fn stride(&self) -> Vec<i32>;
