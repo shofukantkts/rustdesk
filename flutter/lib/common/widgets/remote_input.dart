@@ -58,6 +58,8 @@ bool isSpecialHoldDragActive = false;
 // Cache the last focal point to calculate deltas in special hold-drag mode.
 Offset _lastSpecialHoldDragFocalPoint = Offset.zero;
 
+enum _IosTwoFingerGesture { pending, pinch, verticalScroll, pan }
+
 class RawTouchGestureDetectorRegion extends StatefulWidget {
   final Widget child;
   final FFI ffi;
@@ -103,6 +105,10 @@ class _RawTouchGestureDetectorRegionState
   Offset _lastPosOfDoubleTapDown = Offset.zero;
   bool _touchModePanStarted = false;
   Offset _doubleFinerTapPosition = Offset.zero;
+  _IosTwoFingerGesture _iosTwoFingerGesture = _IosTwoFingerGesture.pending;
+  Offset _iosTwoFingerDelta = Offset.zero;
+  double _iosTwoFingerScrollIntegral = 0;
+  bool _iosTwoFingerHadMouseDown = false;
 
   // For mouse mode, we need to block the events when the cursor is in a blocked area.
   // So we need to cache the last tap down position.
@@ -446,11 +452,19 @@ class _RawTouchGestureDetectorRegionState
     _touchModePanStarted = false;
   }
 
-  // scale + pan event
+  // Two-finger pinch, pan, and scroll event.
   onTwoFingerScaleStart(ScaleStartDetails d) {
     _lastTapDownDetails = null;
     if (isNotTouchBasedDevice()) {
       return;
+    }
+    if (isIOS && !widget.isCamera && !isSpecialHoldDragActive) {
+      _iosTwoFingerGesture = _IosTwoFingerGesture.pending;
+      _iosTwoFingerDelta = Offset.zero;
+      _iosTwoFingerScrollIntegral = 0;
+      _iosTwoFingerHadMouseDown =
+          _touchModePanStarted && !inputModel.relativeMouseMode.value;
+      _scale = 1;
     }
     if (isSpecialHoldDragActive) {
       // Initialize the last focal point to calculate deltas manually.
@@ -470,6 +484,42 @@ class _RawTouchGestureDetectorRegionState
       _lastSpecialHoldDragFocalPoint = d.focalPoint;
       await ffi.cursorModel.updatePan(delta * 2.0, d.focalPoint, handleTouch);
       return;
+    }
+
+    if (isIOS && !widget.isCamera) {
+      final isFirstClassifiedUpdate =
+          _iosTwoFingerGesture == _IosTwoFingerGesture.pending;
+      _iosTwoFingerDelta += d.focalPointDelta;
+      if (isFirstClassifiedUpdate) {
+        _iosTwoFingerGesture = _classifyIosTwoFingerGesture(d);
+        if (_iosTwoFingerGesture == _IosTwoFingerGesture.pending) {
+          return;
+        }
+      }
+
+      final delta = isFirstClassifiedUpdate &&
+              _iosTwoFingerGesture == _IosTwoFingerGesture.verticalScroll
+          ? _iosTwoFingerDelta
+          : d.focalPointDelta;
+      switch (_iosTwoFingerGesture) {
+        case _IosTwoFingerGesture.verticalScroll:
+          _scrollFromIosTwoFingerDrag(delta.dy);
+          return;
+        case _IosTwoFingerGesture.pan:
+          if (canvasLocked) return;
+          ffi.canvasModel.panX(delta.dx);
+          ffi.canvasModel.panY(delta.dy);
+          return;
+        case _IosTwoFingerGesture.pinch:
+          if (canvasLocked) return;
+          ffi.canvasModel.updateScale(d.scale / _scale, d.focalPoint);
+          _scale = d.scale;
+          ffi.canvasModel.panX(delta.dx);
+          ffi.canvasModel.panY(delta.dy);
+          return;
+        case _IosTwoFingerGesture.pending:
+          return;
+      }
     }
 
     if (canvasLocked) return;
@@ -495,7 +545,50 @@ class _RawTouchGestureDetectorRegionState
     }
   }
 
+  _IosTwoFingerGesture _classifyIosTwoFingerGesture(ScaleUpdateDetails d) {
+    const movementSlop = 18.0;
+    const directionRatio = 1.4;
+    const scrollScaleSlop = 0.018;
+    const pinchScaleSlop = 0.035;
+
+    final dx = _iosTwoFingerDelta.dx.abs();
+    final dy = _iosTwoFingerDelta.dy.abs();
+    final scaleChange = (d.scale - 1).abs();
+    final verticalIntent = dy >= movementSlop && dy >= dx * directionRatio;
+
+    // Lock one intent for the rest of this two-finger contact. A vertical
+    // drag only becomes a wheel event while the span stays near its start.
+    if (verticalIntent && scaleChange <= scrollScaleSlop) {
+      return _IosTwoFingerGesture.verticalScroll;
+    }
+    if (scaleChange >= pinchScaleSlop) {
+      return _IosTwoFingerGesture.pinch;
+    }
+    if (_iosTwoFingerDelta.distance >= movementSlop &&
+        scaleChange <= scrollScaleSlop) {
+      return _IosTwoFingerGesture.pan;
+    }
+    return _IosTwoFingerGesture.pending;
+  }
+
+  void _scrollFromIosTwoFingerDrag(double dy) {
+    _iosTwoFingerScrollIntegral += dy / 8;
+    final steps = _iosTwoFingerScrollIntegral.truncate();
+    if (steps != 0) {
+      _iosTwoFingerScrollIntegral -= steps;
+      inputModel.scroll(steps);
+    }
+  }
+
   onTwoFingerScaleEnd(ScaleEndDetails d) async {
+    final iosGesture = _iosTwoFingerGesture;
+    final iosHadMouseDown = _iosTwoFingerHadMouseDown;
+    if (isIOS && !widget.isCamera) {
+      _iosTwoFingerGesture = _IosTwoFingerGesture.pending;
+      _iosTwoFingerDelta = Offset.zero;
+      _iosTwoFingerScrollIntegral = 0;
+      _iosTwoFingerHadMouseDown = false;
+    }
     if (isNotTouchBasedDevice()) {
       return;
     }
@@ -511,7 +604,11 @@ class _RawTouchGestureDetectorRegionState
       // No idea why we need to set the view style to "" here.
       // bind.sessionSetViewStyle(sessionId: sessionId, value: "");
     }
-    if (!isSpecialHoldDragActive) {
+    if (!isSpecialHoldDragActive &&
+        !(isIOS &&
+            !widget.isCamera &&
+            iosGesture == _IosTwoFingerGesture.verticalScroll &&
+            !iosHadMouseDown)) {
       await inputModel.sendMouse('up', MouseButtons.left);
     }
   }

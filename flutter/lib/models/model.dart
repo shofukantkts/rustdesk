@@ -2243,6 +2243,7 @@ class CanvasModel with ChangeNotifier {
   bool _locked = false;
   double _devicePixelRatio = 1.0;
   Size _size = Size.zero;
+  double _mobileBottomOverlayHeight = 0.0;
   // the tabbar over the image
   // double tabBarHeight = 0.0;
   // the window border's width
@@ -2296,6 +2297,16 @@ class CanvasModel with ChangeNotifier {
   ViewStyle get viewStyle => _lastViewStyle;
   RxBool get imageOverflow => _imageOverflow;
 
+  void setMobileBottomOverlayHeight(double height) {
+    final next = max(0.0, height);
+    if ((_mobileBottomOverlayHeight - next).abs() < 0.5) return;
+    _mobileBottomOverlayHeight = next;
+    // The keyboard panel is transient. Recompute the available canvas area
+    // while keeping the user's current zoom and pan position intact.
+    updateSize();
+    notifyListeners();
+  }
+
   void setLocked(bool value) {
     if (_locked == value) return;
     _locked = value;
@@ -2343,9 +2354,11 @@ class CanvasModel with ChangeNotifier {
       // Account for horizontal safe area insets on both orientations.
       w = w - mediaData.padding.left - mediaData.padding.right;
       // Vertically, subtract the bottom keyboard inset (viewInsets.bottom) and any
-      // bottom overlay (e.g. key-help tools) so the canvas is not covered.
+      // bottom overlay (e.g. key-help tools or the iOS keyboard panel) so the
+      // canvas is not covered.
       h = h -
           mediaData.viewInsets.bottom -
+          _mobileBottomOverlayHeight -
           (parent.target?.cursorModel.keyHelpToolsRectToAdjustCanvas?.bottom ??
               0);
       // Orientation-specific handling:
@@ -2764,6 +2777,7 @@ class CanvasModel with ChangeNotifier {
     _y = 0;
     _scale = 1.0;
     _locked = false;
+    _mobileBottomOverlayHeight = 0.0;
     _lastViewStyle = ViewStyle.defaultViewStyle();
     _timerMobileFocusCanvasCursor?.cancel();
     _timerMobileRestoreCanvasOffset?.cancel();

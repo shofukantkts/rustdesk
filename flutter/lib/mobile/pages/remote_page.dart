@@ -83,6 +83,11 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
   InputModel get inputModel => gFFI.inputModel;
   SessionID get sessionId => gFFI.sessionId;
+  bool get _supportsRemoteKeyboardPanel =>
+      isIOS &&
+      (gFFI.ffiModel.pi.platform == kPeerPlatformWindows ||
+          gFFI.ffiModel.pi.platform == kPeerPlatformMacOS ||
+          gFFI.ffiModel.pi.platform == kPeerPlatformLinux);
 
   final TextEditingController _textController =
       TextEditingController(text: initText);
@@ -242,12 +247,14 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       );
 
   void onSoftKeyboardChanged(bool visible) {
+    if (!mounted) return;
     if (!visible) {
       if (_showKeyboardPanel &&
           _keyboardTab == RemoteKeyboardTab.inputMethod &&
           _showEdit) {
         _showKeyboardPanel = false;
         _showEdit = false;
+        gFFI.canvasModel.setMobileBottomOverlayHeight(0);
       }
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
       // [pi.version.isNotEmpty] -> check ready or not, avoid login without soft-keyboard
@@ -424,19 +431,26 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   void _openKeyboardUnlocked() {
     inputModel.keyboardInputAllowed = true;
     gFFI.invokeMethod("enable_soft_keyboard", true);
-    _keyboardTab = RemoteKeyboardTab.inputMethod;
-    _showKeyboardPanel = true;
     // destroy first, so that our _value trick can work
     _value = initText;
     _textController.text = _value;
-    setState(() => _showEdit = false);
+    setState(() {
+      _keyboardTab = RemoteKeyboardTab.inputMethod;
+      _showKeyboardPanel = _supportsRemoteKeyboardPanel;
+      _showEdit = false;
+    });
+    if (!_showKeyboardPanel) {
+      gFFI.canvasModel.setMobileBottomOverlayHeight(0);
+    }
     _timer?.cancel();
     _timer = Timer(kMobileDelaySoftKeyboard, () {
+      if (!mounted) return;
       // show now, and sleep a while to requestFocus to
       // make sure edit ready, so that keyboard won't show/hide/show/hide happen
       setState(() => _showEdit = true);
       _timer?.cancel();
       _timer = Timer(kMobileDelaySoftKeyboardFocus, () {
+        if (!mounted) return;
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
             overlays: SystemUiOverlay.values);
         _mobileFocusNode.requestFocus();
@@ -445,6 +459,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   void _selectKeyboardTab(RemoteKeyboardTab tab) {
+    if (!_supportsRemoteKeyboardPanel) return;
     if (tab == RemoteKeyboardTab.inputMethod) {
       openKeyboard();
       return;
@@ -469,18 +484,31 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       _showEdit = false;
     });
     gFFI.invokeMethod("enable_soft_keyboard", false);
+    gFFI.canvasModel.setMobileBottomOverlayHeight(0);
     _mobileFocusNode.unfocus();
     _physicalFocusNode.requestFocus();
   }
 
+  void _onKeyboardPanelHeightChanged(double height) {
+    if (!_showKeyboardPanel || !_supportsRemoteKeyboardPanel) return;
+    gFFI.canvasModel.setMobileBottomOverlayHeight(height);
+  }
+
   Widget _bottomWidget() {
-    if (_showKeyboardPanel) {
-      return RemoteKeyboardPanel(
-        tab: _keyboardTab,
-        inputModel: inputModel,
-        isMac: gFFI.ffiModel.pi.platform == kPeerPlatformMacOS,
-        onTabSelected: _selectKeyboardTab,
-        onClose: _closeKeyboardPanel,
+    if (_showKeyboardPanel && _supportsRemoteKeyboardPanel) {
+      return Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: RemoteKeyboardPanel(
+          tab: _keyboardTab,
+          inputModel: inputModel,
+          isMac: gFFI.ffiModel.pi.platform == kPeerPlatformMacOS,
+          isLinux: gFFI.ffiModel.pi.platform == kPeerPlatformLinux,
+          onTabSelected: _selectKeyboardTab,
+          onClose: _closeKeyboardPanel,
+          onHeightChanged: _onKeyboardPanelHeightChanged,
+        ),
       );
     }
     if (_showGestureHelp) return getGestureHelp();
@@ -498,6 +526,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
     return WillPopScope(
       onWillPop: () async {
+        if (_showKeyboardPanel) {
+          _closeKeyboardPanel();
+          return false;
+        }
         clientClose(sessionId, gFFI);
         return false;
       },
