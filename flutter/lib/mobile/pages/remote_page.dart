@@ -28,15 +28,6 @@ import '../widgets/custom_scale_widget.dart';
 
 final initText = '1' * 1024;
 
-bool supportsRemoteKeyboardPanel({
-  required bool isIOS,
-  required String? peerPlatform,
-}) {
-  // This panel belongs to the local iOS client; the controlled peer may use
-  // any platform, including one whose platform info is not available yet.
-  return isIOS;
-}
-
 // Workaround for Android (default input method, Microsoft SwiftKey keyboard) when using physical keyboard.
 // When connecting a physical keyboard, `KeyEvent.physicalKey.usbHidUsage` are wrong is using Microsoft SwiftKey keyboard.
 // https://github.com/flutter/flutter/issues/159384
@@ -92,10 +83,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
   InputModel get inputModel => gFFI.inputModel;
   SessionID get sessionId => gFFI.sessionId;
-  bool get _supportsRemoteKeyboardPanel => supportsRemoteKeyboardPanel(
-        isIOS: isIOS,
-        peerPlatform: gFFI.ffiModel.pi.platform,
-      );
+  // The controlled peer's platform does not limit this local iOS panel.
+  bool get _supportsRemoteKeyboardPanel => isIOS;
 
   final TextEditingController _textController =
       TextEditingController(text: initText);
