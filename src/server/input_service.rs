@@ -200,14 +200,21 @@ impl LockModesHandler {
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     fn new(key_event: &KeyEvent, is_numpad_key: bool) -> Self {
         let mut en = ENIGO.lock().unwrap();
-        let event_caps_enabled = Self::is_modifier_enabled(key_event, ControlKey::CapsLock);
-        let local_caps_enabled = en.get_key_state(enigo::Key::CapsLock);
-        let caps_lock_changed = event_caps_enabled != local_caps_enabled;
-        if caps_lock_changed {
-            en.key_click(enigo::Key::CapsLock);
-            #[cfg(target_os = "linux")]
-            Self::sleep_to_ensure_locked(event_caps_enabled, enigo::Key::CapsLock, &mut en);
-        }
+        // On Linux, never sync CapsLock to the local machine: CapsLock may be disabled
+        // locally (e.g. xkb `caps:none`), in which case the state can never match and every
+        // key event would trigger a CapsLock click plus a wait, causing lag and duplicated input.
+        #[cfg(target_os = "linux")]
+        let caps_lock_changed = false;
+        #[cfg(not(target_os = "linux"))]
+        let caps_lock_changed = {
+            let event_caps_enabled = Self::is_modifier_enabled(key_event, ControlKey::CapsLock);
+            let local_caps_enabled = en.get_key_state(enigo::Key::CapsLock);
+            let caps_lock_changed = event_caps_enabled != local_caps_enabled;
+            if caps_lock_changed {
+                en.key_click(enigo::Key::CapsLock);
+            }
+            caps_lock_changed
+        };
 
         let mut num_lock_changed = false;
         #[allow(unused)]
